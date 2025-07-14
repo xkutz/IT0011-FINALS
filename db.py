@@ -112,6 +112,74 @@ class VersionController:
         self.cursor.execute("DELETE FROM Software_Versions WHERE version_id = ?", (version_id,))
         self.conn.commit()
 
+    # --- Bug Management ---
+
+    def add_bug(self, version_id, title, description, severity, status, assigned_to, date_reported):
+        self.cursor.execute("""
+            INSERT INTO Bugs (version_id, title, description, severity, status, assigned_to, date_reported)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (version_id, title, description, severity, status, assigned_to, date_reported))
+        self.conn.commit()
+
+    def update_bug(self, bug_id, title, description, severity, status, assigned_to, date_reported):
+        self.cursor.execute("""
+            UPDATE Bugs
+            SET title = ?, description = ?, severity = ?, status = ?, assigned_to = ?, date_reported = ?
+            WHERE bug_id = ?
+        """, (title, description, severity, status, assigned_to, date_reported, bug_id))
+        self.conn.commit()
+
+    def delete_bug(self, bug_id):
+        self.cursor.execute("DELETE FROM Bugs WHERE bug_id = ?", (bug_id,))
+        self.conn.commit()
+
+    def get_bugs_by_software(self, software_id):
+        self.cursor.execute("""
+            SELECT B.bug_id, B.title, B.description, B.severity, B.status, B.assigned_to, B.date_reported, V.version_number
+            FROM Bugs B
+            JOIN Software_Versions V ON B.version_id = V.version_id
+            WHERE V.software_id = ?
+            ORDER BY B.date_reported DESC
+        """, (software_id,))
+        return self.cursor.fetchall()
+
+    # --- Deployment Management ---
+
+    def add_deployment(self, software_id, environment, deployment_date, deployment_status):
+        self.cursor.execute("""
+            INSERT INTO Deployments (version_id, environment, deployment_date, deployment_status)
+            VALUES (
+                (SELECT version_id FROM Software_Versions 
+                WHERE software_id = ? 
+                ORDER BY version_id DESC LIMIT 1),
+                ?, ?, ?
+            )
+        """, (software_id, environment, deployment_date, deployment_status))
+        self.conn.commit()
+
+    def get_deployments(self, software_id):
+        self.cursor.execute("""
+            SELECT d.deployment_id, d.environment, d.deployment_date, d.deployment_status
+            FROM Deployments d
+            JOIN Software_Versions v ON d.version_id = v.version_id
+            WHERE v.software_id = ?
+            ORDER BY d.deployment_id DESC
+        """, (software_id,))
+        return self.cursor.fetchall()
+
+    def update_deployment(self, deployment_id, environment, deployment_date, deployment_status):
+        self.cursor.execute("""
+            UPDATE Deployments
+            SET environment = ?, deployment_date = ?, deployment_status = ?
+            WHERE deployment_id = ?
+        """, (environment, deployment_date, deployment_status, deployment_id))
+        self.conn.commit()
+
+    def delete_deployment(self, deployment_id):
+        self.cursor.execute("DELETE FROM Deployments WHERE deployment_id = ?", (deployment_id,))
+        self.conn.commit()
+
+
 
     # --- Close connection ---
     def close(self):
