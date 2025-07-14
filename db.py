@@ -7,13 +7,19 @@ class VersionController:
         self.active_software_id = None
         self.create_tables()
 
+        try:
+            self.cursor.execute("ALTER TABLE Patch_Notes ADD COLUMN image_path TEXT;")
+            self.conn.commit()
+        except sqlite3.OperationalError:
+            pass
+
     def create_tables(self):
         self.cursor.executescript("""
         CREATE TABLE IF NOT EXISTS Softwares (
             software_id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL
         );
-
+                                  
         CREATE TABLE IF NOT EXISTS Software_Versions (
             version_id INTEGER PRIMARY KEY AUTOINCREMENT,
             software_id INTEGER,
@@ -60,15 +66,39 @@ class VersionController:
             version_id INTEGER,
             note_title TEXT,
             note_description TEXT,
+            image_path TEXT,
             FOREIGN KEY (version_id) REFERENCES Software_Versions(version_id)
         );
+
+                                  
         """)
         self.conn.commit()
 
-    # --- Software Management ---
+    def get_latest_version_id_for_active_software(self):
+        self.cursor.execute("""
+            SELECT version_id FROM Software_Versions
+            WHERE software_id = ?
+            ORDER BY version_id DESC LIMIT 1
+        """, (self.active_software_id,))
+        row = self.cursor.fetchone()
+        return row[0] if row else None
+
+    #Software Manageme
     def add_software(self, name):
         self.cursor.execute("INSERT INTO Softwares (name) VALUES (?)", (name,))
         self.conn.commit()
+
+    def update_software(self, software_id, new_name):
+        with self.conn:
+            self.conn.execute("UPDATE Softwares SET name = ? WHERE software_id = ?", (new_name, software_id))
+
+    def delete_software(self, software_id):
+        with self.conn:
+            self.conn.execute("DELETE FROM Patch_Notes WHERE version_id IN (SELECT version_id FROM Software_Versions WHERE software_id = ?)", (software_id,))
+            self.conn.execute("DELETE FROM Bugs WHERE version_id IN (SELECT version_id FROM Software_Versions WHERE software_id = ?)", (software_id,))
+            self.conn.execute("DELETE FROM Deployments WHERE version_id IN (SELECT version_id FROM Software_Versions WHERE software_id = ?)", (software_id,))
+            self.conn.execute("DELETE FROM Software_Versions WHERE software_id = ?", (software_id,))
+            self.conn.execute("DELETE FROM Softwares WHERE software_id = ?", (software_id,))
 
     def get_softwares(self):
         self.cursor.execute("SELECT software_id, name FROM Softwares ORDER BY software_id DESC")
@@ -112,7 +142,7 @@ class VersionController:
         self.cursor.execute("DELETE FROM Software_Versions WHERE version_id = ?", (version_id,))
         self.conn.commit()
 
-    # --- Bug Management ---
+    #Bug Manage
 
     def add_bug(self, version_id, title, description, severity, status, assigned_to, date_reported):
         self.cursor.execute("""
@@ -143,7 +173,7 @@ class VersionController:
         """, (software_id,))
         return self.cursor.fetchall()
 
-    # --- Deployment Management ---
+    #Dep Managem
 
     def add_deployment(self, software_id, environment, deployment_date, deployment_status):
         self.cursor.execute("""
@@ -179,8 +209,30 @@ class VersionController:
         self.cursor.execute("DELETE FROM Deployments WHERE deployment_id = ?", (deployment_id,))
         self.conn.commit()
 
+    #Patch Management
+
+    def add_patch_note(self, version_id, note_title, note_description, image_path=None):
+        self.cursor.execute("""
+            INSERT INTO Patch_Notes (version_id, note_title, note_description, image_path)
+            VALUES (?, ?, ?, ?)
+        """, (version_id, note_title, note_description, image_path))
+        self.conn.commit()
+
+    def get_patch_notes_by_software(self, software_id):
+        self.cursor.execute("""
+            SELECT P.patch_id, P.note_title, P.note_description, P.image_path, V.version_number
+            FROM Patch_Notes P
+            JOIN Software_Versions V ON P.version_id = V.version_id
+            WHERE V.software_id = ?
+            ORDER BY P.patch_id DESC
+        """, (software_id,))
+        return self.cursor.fetchall()
+
+    def delete_patch_note(self, patch_id):
+        self.cursor.execute("DELETE FROM Patch_Notes WHERE patch_id = ?", (patch_id,))
+        self.conn.commit()
 
 
-    # --- Close connection ---
+    #Close connection
     def close(self):
         self.conn.close()

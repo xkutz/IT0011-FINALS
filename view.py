@@ -1,6 +1,10 @@
-# view.py
 import customtkinter as ctk
 from db import VersionController
+import os
+from tkinter import filedialog
+from PIL import Image, ImageTk
+from tkinter import messagebox
+
 
 class DashboardView(ctk.CTkFrame):
     def __init__(self, master, controller):
@@ -18,6 +22,12 @@ class DashboardView(ctk.CTkFrame):
         self.software_dropdown = ctk.CTkOptionMenu(self, values=["Loading..."], command=self.change_selected_software)
         self.software_dropdown.pack(pady=10, fill="x", padx=10)
 
+        self.summary_label = ctk.CTkLabel(self, text="Loading recent activity...", justify="left", anchor="w")
+        self.summary_label.pack(pady=10, padx=10, fill="x")
+        
+        self.software_list_frame = ctk.CTkScrollableFrame(self)
+        self.software_list_frame.pack(pady=5, fill="both", expand=True, padx=10)
+
         self.load_softwares()
 
     def add_software(self):
@@ -30,17 +40,79 @@ class DashboardView(ctk.CTkFrame):
     def load_softwares(self):
         softwares = self.controller.get_softwares()
         self.software_map = {name: sid for sid, name in softwares}
+
         self.software_dropdown.configure(values=list(self.software_map.keys()))
         if softwares:
             first = softwares[0][1]
             self.software_dropdown.set(first)
             self.controller.set_active_software(self.software_map[first])
 
+        #Refresh software display
+        for widget in self.software_list_frame.winfo_children():
+            widget.destroy()
+
+        for sid, name in softwares:
+            row = ctk.CTkFrame(self.software_list_frame)
+            row.pack(fill="x", pady=2)
+
+            label = ctk.CTkLabel(row, text=name, anchor="w")
+            label.pack(side="left", fill="x", expand=True)
+
+            edit_btn = ctk.CTkButton(row, text="✏️", width=30, command=lambda sid=sid, n=name: self.edit_software_prompt(sid, n))
+            edit_btn.pack(side="right", padx=2)
+
+            del_btn = ctk.CTkButton(row, text="🗑️", width=30, fg_color="red", command=lambda sid=sid: self.delete_software(sid))
+            del_btn.pack(side="right", padx=2)
+            self.update_summary()
+
+    def edit_software_prompt(self, software_id, current_name):
+        new_name = ctk.CTkInputDialog(text=f"Rename software '{current_name}' to:", title="Edit Software").get_input()
+        if new_name and new_name.strip():
+            self.controller.update_software(software_id, new_name.strip())
+            self.load_softwares()
+
+    def update_summary(self):
+        software_id = self.controller.get_active_software()
+        if not software_id:
+            self.summary_label.configure(text="No software selected.")
+            return
+
+        #Get latest
+        versions = self.controller.get_versions(software_id)
+        latest_version = versions[0] if versions else None
+        version_text = f"Latest Version: v{latest_version[1]} ({latest_version[3]})" if latest_version else "No versions yet."
+
+        #Get latest patch
+        patches = self.controller.get_patch_notes_by_software(software_id)
+        latest_patch = patches[0] if patches else None
+        patch_text = f"Latest Patch: {latest_patch[1]}" if latest_patch else "No patch notes yet."
+
+        #Get latest bug
+        bugs = self.controller.get_bugs_by_software(software_id)
+        latest_bug = bugs[0] if bugs else None
+        bug_text = f"Latest Bug: {latest_bug[1]}" if latest_bug else "No bugs reported."
+
+        #Get latest deployment
+        deployments = self.controller.get_deployments(software_id)
+        latest_deployment = deployments[0] if deployments else None
+        deploy_text = f"Last Deployment: {latest_deployment[1]} - {latest_deployment[2]} ({latest_deployment[3]})" if latest_deployment else "No deployments yet."
+
+        summary = f"{version_text}\n{patch_text}\n{bug_text}\n{deploy_text}"
+        self.summary_label.configure(text=summary)
+
+
+    def delete_software(self, software_id):
+        if messagebox.askyesno("Delete Software", "Are you sure you want to delete this software and all its data?"):
+            self.controller.delete_software(software_id)
+            self.load_softwares()
+        
+
+
     def change_selected_software(self, selected_name):
         software_id = self.software_map.get(selected_name)
         if software_id:
             self.controller.set_active_software(software_id)
-
+            self.update_summary()
 
 class VersionDetailsView(ctk.CTkFrame):
     def __init__(self, master, controller):
@@ -72,7 +144,7 @@ class VersionDetailsView(ctk.CTkFrame):
         self.version_list_frame = ctk.CTkScrollableFrame(self)
         self.version_list_frame.pack(pady=10, fill="both", expand=True)
 
-        # Header row
+        #Header row
         ctk.CTkLabel(self.version_list_frame, text="Version", anchor="w", width=100).grid(row=0, column=0, sticky="w", padx=5)
         ctk.CTkLabel(self.version_list_frame, text="Release Date", anchor="w", width=120).grid(row=0, column=1, sticky="w", padx=5)
         ctk.CTkLabel(self.version_list_frame, text="Status", anchor="w", width=100).grid(row=0, column=2, sticky="w", padx=5)
@@ -150,7 +222,7 @@ class BugTrackingView(ctk.CTkFrame):
 
         ctk.CTkLabel(self, text="🐞 Bug Tracking", font=("Arial", 20)).pack(pady=10)
 
-        # --- Bug Entry Form ---
+        #Bug Entry Form
         self.version_dropdown = ctk.CTkOptionMenu(self, values=["Loading..."])
         self.version_dropdown.pack(pady=2, padx=10, fill="x")
 
@@ -180,7 +252,7 @@ class BugTrackingView(ctk.CTkFrame):
         self.delete_bug_button = ctk.CTkButton(self, text="Delete Bug", command=self.delete_bug, fg_color="red")
         self.delete_bug_button.pack(pady=2, padx=10, fill="x")
 
-        # --- Bug List ---
+        #Bug List
         self.bug_list_frame = ctk.CTkScrollableFrame(self)
         self.bug_list_frame.pack(pady=10, fill="both", expand=True)
 
@@ -367,7 +439,6 @@ class ReleaseManagementView(ctk.CTkFrame):
         self.status_entry.set("Pending")
         self.add_deployment_button.configure(text="Add Deployment")
 
-
 class VersionTimelineView(ctk.CTkFrame):
     def __init__(self, master, controller):
         super().__init__(master)
@@ -398,7 +469,169 @@ class VersionTimelineView(ctk.CTkFrame):
                 label = ctk.CTkLabel(self.timeline_frame, text=display, anchor="w", justify="left")
                 label.pack(anchor="w", pady=4, fill="x")
 
+class PatchNotesView(ctk.CTkFrame):
+    def __init__(self, master, controller):
+        super().__init__(master)
+        self.controller = controller
+        self.selected_image_path = None
 
+        ctk.CTkLabel(self, text="📘 Patch Notes", font=("Arial", 20)).pack(pady=10)
+
+        self.title_entry = ctk.CTkEntry(self, placeholder_text="Note Title")
+        self.title_entry.pack(pady=2, padx=10, fill="x")
+
+        self.desc_entry = ctk.CTkEntry(self, placeholder_text="Note Description")
+        self.desc_entry.pack(pady=2, padx=10, fill="x")
+
+        self.image_button = ctk.CTkButton(self, text="Attach Image (Optional)", command=self.browse_image)
+        self.image_button.pack(pady=2, padx=10, fill="x")
+
+        self.preview_label = ctk.CTkLabel(self, text="", anchor="w")
+        self.preview_label.pack(pady=2, padx=10, fill="x")
+
+        self.add_button = ctk.CTkButton(self, text="Add Patch Note", command=self.add_patch_note)
+        self.add_button.pack(pady=5, padx=10, fill="x")
+
+        self.notes_frame = ctk.CTkScrollableFrame(self)
+        self.notes_frame.pack(pady=10, fill="both", expand=True)
+
+        self.refresh_notes()
+
+    def browse_image(self):
+        path = filedialog.askopenfilename(filetypes=[("Image Files", "*.png *.jpg *.jpeg *.gif")])
+        if path:
+            self.selected_image_path = path
+            self.preview_label.configure(text=os.path.basename(path))
+
+    def add_patch_note(self):
+        version_id = self.controller.get_latest_version_id_for_active_software()
+        title = self.title_entry.get()
+        desc = self.desc_entry.get()
+        image_path = self.selected_image_path
+
+        if version_id and title:
+            self.controller.add_patch_note(version_id, title, desc, image_path)
+            self.clear_form()
+            self.refresh_notes()
+
+    def clear_form(self):
+        self.title_entry.delete(0, ctk.END)
+        self.desc_entry.delete(0, ctk.END)
+        self.selected_image_path = None
+        self.preview_label.configure(text="")
+
+    def refresh_notes(self):
+        for widget in self.notes_frame.winfo_children():
+            widget.destroy()
+
+        software_id = self.controller.get_active_software()
+        if software_id:
+            notes = self.controller.get_patch_notes_by_software(software_id)
+            for patch_id, title, desc, img_path, version_number in notes:
+                frame = ctk.CTkFrame(self.notes_frame)
+                frame.pack(fill="x", padx=10, pady=5)
+
+                text = f"📌 {title} (v{version_number})\n{desc}"
+                ctk.CTkLabel(frame, text=text, anchor="w", justify="left").pack(side="left", fill="both", expand=True)
+
+                if img_path and os.path.exists(img_path):
+                    try:
+                        img = Image.open(img_path)
+                        img.thumbnail((64, 64))
+                        tk_img = ImageTk.PhotoImage(img)
+
+                        def open_image(path=img_path):
+                            if not os.path.exists(path):
+                                return
+
+                            top = ctk.CTkToplevel(self)
+                            top.title(os.path.basename(path))
+                            top.geometry("800x600")
+                            
+                            #Center window
+                            top.update_idletasks()
+                            w = 800
+                            h = 600
+                            x = (top.winfo_screenwidth() // 2) - (w // 2)
+                            y = (top.winfo_screenheight() // 2) - (h // 2)
+                            top.geometry(f"{w}x{h}+{x}+{y}")
+
+                            canvas = ctk.CTkCanvas(top, bg="black", highlightthickness=0)
+                            canvas.pack(fill="both", expand=True)
+
+                            try:
+                                original_img = Image.open(path)
+                            except Exception as e:
+                                ctk.CTkLabel(top, text=f"Error loading image: {e}").pack(pady=10)
+                                return
+                            
+                            zoom_level = [0.5]
+
+                            def render_image():
+                                img = original_img.copy()
+                                scale = zoom_level[0]
+                                img = img.resize((int(original_img.width * scale), int(original_img.height * scale)))
+                                tk_img = ImageTk.PhotoImage(img)
+                                canvas.img = tk_img  # prevent GC
+                                canvas.delete("all")
+                                canvas.create_image(canvas.winfo_width() // 2, canvas.winfo_height() // 2, anchor="center", image=tk_img)
+
+                        #scrol
+                            def zoom(event):
+                                if event.delta > 0:
+                                    zoom_level[0] *= 1.1
+                                else:
+                                    zoom_level[0] /= 1.1
+                                render_image()
+
+                            def save_image():
+                                save_path = filedialog.asksaveasfilename(defaultextension=".png", filetypes=[
+                                    ("PNG", "*.png"),
+                                    ("JPEG", "*.jpg;*.jpeg"),
+                                    ("GIF", "*.gif"),
+                                    ("BMP", "*.bmp"),
+                                    ("All files", "*.*")
+                                ])
+                                if save_path:
+                                    original_img.save(save_path)
+
+                            def close_popup():
+                                top.destroy()
+
+                            #Bind zoom
+                            canvas.bind("<Configure>", lambda e: render_image())
+                            canvas.bind("<MouseWheel>", zoom)
+                            canvas.bind("<Button-4>", lambda e: zoom(type("Event", (), {"delta": 120})))
+                            canvas.bind("<Button-5>", lambda e: zoom(type("Event", (), {"delta": -120})))
+
+                            #Button Row
+                            button_frame = ctk.CTkFrame(top)
+                            button_frame.place(relx=1.0, rely=0.0, anchor="ne", x=-10, y=10)
+
+                            close_btn = ctk.CTkButton(button_frame, text="❌", width=10, command=close_popup, fg_color="red", hover_color="#aa0000")
+                            close_btn.pack(side="right", padx=5)
+
+                            save_btn = ctk.CTkButton(button_frame, text="💾 Save As...", command=save_image)
+                            save_btn.pack(side="right", padx=5)
+
+                            render_image()
+
+
+                        img_label = ctk.CTkLabel(frame, image=tk_img, text="")
+                        img_label.image = tk_img
+                        img_label.pack(side="right", padx=5)
+                        img_label.bind("<Button-1>", lambda e, p=img_path: open_image(p))
+                    except:
+                        pass
+
+                del_btn = ctk.CTkButton(frame, text="❌", width=10, command=lambda pid=patch_id: self.delete_patch_note(pid))
+                del_btn.pack(side="right", padx=5)
+
+
+    def delete_patch_note(self, patch_id):
+        if messagebox.askyesno("Confirm Delete", "Are you sure you want to delete this patch note?"):
+            self.controller.delete_patch_note(patch_id)
+            self.refresh_notes()
 
 
 class MainView(ctk.CTkFrame):
@@ -417,7 +650,9 @@ class MainView(ctk.CTkFrame):
             "Version Details": VersionDetailsView,
             "Bug Tracking": BugTrackingView,
             "Release Management": ReleaseManagementView,
-            "Version Timeline": VersionTimelineView
+            "Version Timeline": VersionTimelineView,
+            "Patch Notes": PatchNotesView,
+            
         }
 
         for name, view_class in self.views.items():
@@ -432,6 +667,3 @@ class MainView(ctk.CTkFrame):
             self.current_view.destroy()
         self.current_view = view_class(self.main_area, self.controller)
         self.current_view.pack(expand=True, fill="both")
-
-
-
