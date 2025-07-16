@@ -58,10 +58,10 @@ class DashboardView(ctk.CTkFrame):
             label = ctk.CTkLabel(row, text=name, anchor="w")
             label.pack(side="left", fill="x", expand=True)
 
-            edit_btn = ctk.CTkButton(row, text="✏️", width=30, command=lambda sid=sid, n=name: self.edit_software_prompt(sid, n))
+            edit_btn = ctk.CTkButton(row, text="✏️ rename", width=30, command=lambda sid=sid, n=name: self.edit_software_prompt(sid, n))
             edit_btn.pack(side="right", padx=2)
 
-            del_btn = ctk.CTkButton(row, text="🗑️", width=30, fg_color="red", command=lambda sid=sid: self.delete_software(sid))
+            del_btn = ctk.CTkButton(row, text="🗑️ delete", width=30, fg_color="red", command=lambda sid=sid: self.delete_software(sid))
             del_btn.pack(side="right", padx=2)
             self.update_summary()
 
